@@ -1,0 +1,7 @@
+q1=/path/to/reads/5534-TG-0001_S2_L002_R1_001.fastq.gz
+
+q2=/path/to/reads/5534-TG-0001_S2_L002_R2_001.fastq.gz
+
+q1=/path/to/reads/5534-TG-0001_S2_L003_R1_001.fastq.gz
+
+q2=/path/to/reads/5534-TG-0001_S2_L003_R2_001.fastq.gz

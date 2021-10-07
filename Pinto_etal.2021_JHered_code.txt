@@ -1,0 +1,429 @@
+#reads prepared using Longranger [v2.2.2] and Scaff10X [9-5-2018 build]
+
+#starting genome assembly from SuperNova can be found here: https://doi.org/10.6084/m9.figshare.7908098
+
+
+e.g.
+wget -O longranger-2.2.2.tar.gz "http://cf.10xgenomics.com/releases/genome/longranger-2.2.2.tar.gz?Expires=1546858675&Policy=eyJTdGF0ZW1lbnQiOlt7IlJlc291cmNlIjoiaHR0cDovL2NmLjEweGdlbm9taWNzLmNvbS9yZWxlYXNlcy9nZW5vbWUvbG9uZ3Jhbmdlci0yLjIuMi50YXIuZ3oiLCJDb25kaXRpb24iOnsiRGF0ZUxlc3NUaGFuIjp7IkFXUzpFcG9jaFRpbWUiOjE1NDY4NTg2NzV9fX1dfQ__&Signature=bAP9WyF6FcEIVD4m6hEJcACH7D-xpVepME2x0GjuHaSNRGdzyaLInrmBvXf5i7awF7tI0fnGbi7va0RxoO8cEqip1ghuJS~eb6QBdfqhIyt76jyLfqCJwwSIg7IboP~CF0TKCkABJ3sa8eL4T5Xh3580t7JDmW8zkKUhKh0nLha0cbkUIU-pPiOduu-O9EchuSkQe4QiaroAy~Pm6qVlEcPmDfzRxEOIdP5S5cDO3u89QyYztKoKacJ-CAUHZ1eqzg4vx1W27~BEQMRXycuTG7qmv5Qa0dFegQxXlvqN3c2nrVnazrnuJ6VD4F5chRpK5QBPnTCFtDhX1uMOekviSQ__&Key-Pair-Id=APKAI7S6A5RYOXBWRPDA";
+tar -xzvf longranger-2.2.2.tar.gz;
+longranger basic --id=TG3544 --fastqs=./;
+mv S_townsendi_longranger_reads.fq.gz myreads.fq.gz;
+git clone https://github.com/wtsi-hpag/Scaff10X.git/;
+/full/path/to/scaff-bin/scaff_reads file.dat S_townsendi_scaff-reads_1.fq.gz S_townsendi_scaff-reads_2.fq.gz > try.out;
+
+###################FINAL genome assembly begun 2-29-2020
+###################Genome naming scheme "S_townsendi_TG3544_[version passed since SuperNova (v0.1)]_FINAL_[most recent software used].fa[/fasta]"
+#conda version 4.8.2
+conda create -n new_genome_env;
+conda activate new_genome_env;
+conda install arcs assembly-stats bamtools bbmap bcftools bedtools bwa fastx_toolkit hapcut2 hisat2 links megahit picard pilon samtools seqkit seqtk tigmint trim-galore;
+
+trim_galore --paired S_townsendi_Scaff10X_R1.fq.gz S_townsendi_Scaff10X_R2.fq.gz;
+trim_galore --paired S_townsendi_HiC_TG3718_R1.fq.gz S_townsendi_HiC_TG3718_R2.fq.gz;
+mv S_townsendi_HiC_TG3718_R1_val_1.fq.gz S_townsendi_HiC_TG3718_1.fastq.gz;
+mv S_townsendi_HiC_TG3718_R2_val_2.fq.gz S_townsendi_HiC_TG3718_2.fastq.gz;
+
+mv TG3544_supernova_pseudohap.fasta S_townsendi_TG3544_v0.1_FINAL_SuperNova.fasta;
+
+#remove incomprehensible "N" scaffolds, make 1-line
+seqtk seq -l0 S_townsendi_TG3544_v0.1_FINAL_SuperNova.fasta > S_townsendi_TG3544_v0.1_FINAL_SuperNova.fas;
+grep '^N*N$' -B1 S_townsendi_TG3544_v0.1_FINAL_SuperNova.fas | grep '>' > N_scaffolds.txt;
+#make quick sed script
+bash N_scaffolds.sh;
+#make sure to only have removed the "20 scaffolds" and "20 gaps"
+assembly-stats S_townsendi_TG3544_v0.1_FINAL_SuperNova.fas;
+#sum = 2003185602, n = 58169*******, ave = 34437.34, largest = 86754586
+#Gaps = 109269*******
+
+assembly-stats S_townsendi_TG3544_v0.1_FINAL_SuperNova.fa;
+#sum = 2003095602, n = 58149*******, ave = 34447.64, largest = 86754586
+#N50 = 12629056, n = 37
+#N60 = 7566236, n = 57
+#N70 = 3411059, n = 97
+#N80 = 1078884, n = 199
+#N90 = 9661, n = 5442
+#N100 = 1000, n = 58149
+#N_count = 182966760
+#Gaps = 109249*******
+
+#break misassembled SuperNova scaffolds tigmint [v1.1.2] and rescaffold using ARCS [v1.1.1]
+tigmint-make arcs draft=S_townsendi_TG3544_v0.1_FINAL_SuperNova reads=myreads t=42;
+mv S_townsendi_TG3544_v0.1_FINAL_SuperNova.myreads.as0.65.nm5.molecule.size2000.trim0.window1000.span20.breaktigs.fa S_townsendi_TG3544_v0.2a_FINAL_TIGMINT.fasta;
+assembly-stats S_townsendi_TG3544_v0.2a_FINAL_TIGMINT.fasta;
+sum = 1999493511, n = 59469, ave = 33622.45, largest = 52059470
+N50 = 6460730, n = 69
+N60 = 3625198, n = 110
+N70 = 2037326, n = 181
+N80 = 695281, n = 348
+N90 = 9554, n = 5915
+N100 = 1, n = 59469
+N_count = 179364669
+Gaps = 109143
+
+samtools stats -@ 24 'S_townsendi_TG3544_v0.1_FINAL_SuperNova.myreads.sortbx.bam' > S_townsendi_v0.1_mapstats.txt;
+seqkit sort -l -r S_townsendi_TG3544_v0.1_FINAL_SuperNova.myreads.as0.65.nm5.molecule.size2000.trim0.window1000.span20.breaktigs.myreads.c5_e30000_r0.05.arcs.a0.1_l10.links.scaffolds.fa | seqtk seq -l0 | awk '/^>/{print ">scaffold_" ++i; next}{print}' > S_townsendi_TG3544_v0.2b_FINAL_ARCS.fa;
+#cut off all scaffolds <1001bp
+samtool faidx S_townsendi_TG3544_v0.2b_FINAL_ARCS.fa;
+head - S_townsendi_TG3544_v0.2b_FINAL_ARCS.fa > S_townsendi_TG3544_v0.2b_FINAL_ARCS.fasta;
+assembly-stats S_townsendi_TG3544_v0.2b_FINAL_ARCS.fasta;
+sum = 1999290127, n = 58604, ave = 34115.25, largest = 72975442
+N50 = 7457274, n = 57
+N60 = 4431877, n = 91
+N70 = 2343670, n = 152
+N80 = 754193, n = 305
+N90 = 9607, n = 5655
+N100 = 1000, n = 58604
+N_count = 179365680
+Gaps = 109299
+
+#TGS-gapcloser on S. townsendi
+git clone https://github.com/BGI-Qingdao/TGS-GapCloser.git;
+cd TGS-GapCloser;
+./TGS-GapCloser.sh --scaff ../S_townsendi_TG3544_v0.3_FINAL_ARCS.fasta --reads ../S_townsendi_HiFi.fasta.gz --output ../tgs_output/tgs_v0.31 --minmap_arg '-x asm20' --tgstype pb --ne --chunk 12 --thread 12 --min_match 100;
+./TGS-GapCloser.sh --scaff ../tgs_output/tgs_v0.31.scaff_seqs --reads ../S_townsendi_ONT_PASS_FINAL.fasta.gz --output ../tgs_output/tgs_v0.32 --ne --chunk 12 --thread 12;
+
+#stats for tgs_v0.32.scaff_seqs
+#sum = 2014429111, n = 58603, ave = 34374.16, largest = 73487924
+#N50 = 7468733, n = 57
+#N60 = 4422213, n = 91
+#N70 = 2338521, n = 153
+#N80 = 758562, n = 307
+#N90 = 9734, n = 5654
+#N100 = 498, n = 58603
+#N_count = 67505130
+#Gaps = 10696
+
+
+#NextPolish on S. townsendi
+git clone https://github.com/Nextomics/NextPolish.git'
+
+nice -n 20 ./nextPolish S_townsendi_TGS_run.cfg
+seqkit sort -l -r genome.nextpolish.fasta.gz | seqtk seq -l0 | awk '/^>/{print ">scaffold_" ++i; next}{print}' > S_townsendi_TG3544_v0.3_FINAL_ARCS_Nextpolish.fasta;
+
+#stats for S_townsendi_TG3544_v0.3_FINAL_ARCS_Nextpolish.fasta
+#sum = 2036478338, n = 58603, ave = 34750.41, largest = 74187749
+#N50 = 7605248, n = 57
+#N60 = 4460106, n = 91
+#N70 = 2371533, n = 153
+#N80 = 770247, n = 306
+#N90 = 9918, n = 5462
+#N100 = 498, n = 58603
+#N_count = 0
+#Gaps = 0
+
+
+#Onto Hi-C scaffolding
+#process Hi-C reads
+
+#trim reads using trim_galore
+bash trim_reads_paired.sh
+
+#remove PCR duplicates using bbmap
+bash remove_PCR_dups.sh
+
+file                                  format  type     num_seqs         sum_len  min_len  avg_len  max_len
+S_townsendi_HiC_TG3718_R1.fastq.gz    FASTQ   DNA   182,700,054  26,580,255,363       20    145.5      150
+S_townsendi_HiC_TG3718_R2.fastq.gz    FASTQ   DNA   182,700,054  26,586,356,256       20    145.5      150
+
+#Sphaerodactylus 3D-DNA scaffolding
+bwa index S_townsendi_TG3544_v0.3_FINAL_ARCS_Nextpolish.fasta
+../generate_site_positions.py Arima S_town ../references/S_townsendi_TG3544_v0.3_FINAL_ARCS_Nextpolish.fasta; cd ..;
+docker run -v /media/bjp/storage/juicer/S_townsendi:/data -v /path/to/juicedir:/juicedir aidenlab/juicer:latest -d /data -z /data/references/S_townsendi_TG3544_v0.3_FINAL_ARCS_Nextpolish.fasta -y /data/restriction_sites/S_town_Arima.txt -p S_town -g S_town -s none -t42
+./run-asm-pipeline.sh --mode diploid ../references/S_townsendi_TG3544_v0.3_FINAL_ARCS_Nextpolish.fasta ../aligned/S_town_merged_nodups.txt
+
+#manual curation, removing smaller blips and assigning heat block to chromosomes using Juicebox Assembly Tools [v1.11] 
+bash run-asm-pipeline-post-review.sh --build-gapped-map -g 100 --sort-output -r ../S_townsendi_TG3544_v0.3_FINAL_ARCS_Nextpolish.0.reviewed.assembly ../S_townsendi_TG3544_v0.3_FINAL_ARCS_Nextpolish.fasta ../S_town_merged_nodups.txt
+
+#order scaffolded genome
+conda activate new_genome_env
+seqkit sort -l -r S_townsendi_TG3544_v0.3_FINAL_ARCS_Nextpolish.FINAL.fasta | seqtk seq -l0 | awk '/^>/{print ">scaffold_" ++i; next}{print}' > S_townsendi_TG3544_v0.4.3D-DNA.fasta;
+
+#remove duplicated regions in the genome by mapping small contigs/scaffolds to linkage groups and removing high-confidence hits using RaGOO
+seqkit seq -m 20000000 S_townsendi_TG3544_v0.4.3D-DNA.fasta > S_townsendi_TG3544_v0.4.3D-DNA_chromosomes.fasta
+seqkit seq -M 20000000 S_townsendi_TG3544_v0.4.3D-DNA.fasta > S_townsendi_TG3544_v0.4.3D-DNA_fragments.fasta
+python3 ragoo.py S_townsendi_TG3544_v0.4.3D-DNA_fragments.fasta S_townsendi_TG3544_v0.4.3D-DNA_chromosomes.fasta -t 24;
+cat ragoo_output/groupings/*.txt > combined.txt;
+egrep -v '[[:space:]]1$' combined.txt | cut -f1 > keepers_list.txt;
+seqtk subseq S_townsendi_TG3544_v0.4.3D-DNA_fragments.fasta keepers_list.txt > keep_small_scaffolds_updated.fasta;
+cat S_townsendi_TG3544_v0.4.3D-DNA_chromosomes.fasta keep_small_scaffolds_updated.fasta > S_townsendi_TG3544_v0.4.3D-DNA_dedupe.fasta;
+
+#length cutoff at 10kb
+seqkit seq -m 10000 S_townsendi_TG3544_v0.4.3D-DNA_dedupe.fasta > MPM_Stown_v2.0.fasta
+
+#submit MPM_Stown_v2.0.fasta to NCBI and remove flagged contaminates 
+#contamination report from NCBI
+Trim:
+Sequence name, length, span(s), apparent source
+LG_1	196877829	192894233..192894264	adaptor:NGB01085.1-not_cleaned
+LG_8	115113985	1423007..1423051	adaptor:NGB00360.1-not_cleaned
+scaffold_1999	11074	6313..6343	adaptor:NGB00750.1-not_cleaned
+
+#annotate genome using funannotate [v1.5] docker
+
+#soft-mask genome
+docker run -it --rm -v $PWD:/home/linuxbrew/data funannotate;
+funannotate mask -i MPM_Stown_v2.1.fasta -o MPM_Stown_v2.2.fasta --cpus 12;
+
+funannotate train \
+-i MPM_Stown_v2.2.fasta -o MPM_Stown_v2.2 \
+--left S_townsendi_head-embryo_R1.fq.gz \
+--right S_townsendi_head-embryo_R2.fq.gz \
+--trinity S_townsendi_meta_transcriptome_FINAL.fasta \
+--species "Sphaerodactylus townsendi" --cpus 12 --memory 100 --no_trimmomatic;
+
+funannotate predict \
+-i MPM_Stown_v2.2.fasta -o MPM_Stown_v2.2 \
+--species "Sphaerodactylus townsendi" --ploidy 2 --repeats2evm \
+--transcript_evidence S_townsendi_meta_transcriptome_FINAL.fasta \
+--protein_evidence uniprot_sprot.fasta \
+--cpus 42 --organism other --optimize_augustus;
+
+funannotate setup -b tetrapoda;
+funannotate annotate -i MPM_Stown_v2.2 --cpus 42 --busco_db tetrapoda --sbt Sphaero_template.sbt --rename K3G42 --force;
+
+
+
+#################################Re-sequencing data analysis***************************
+#trim reads using trim_galore
+bash trim_reads_paired.sh
+
+#remove PCR duplicates using bbmap
+bash remove_PCR_dups.sh
+
+#whole genome data
+file                                      format  type     num_seqs         sum_len  min_len  avg_len  max_len
+S_klauberi_TG2759_M_genome_R1.fastq.gz    FASTQ   DNA   340,131,281  49,878,948,390       20    146.6      151
+S_klauberi_TG2759_M_genome_R2.fastq.gz    FASTQ   DNA   340,131,281  49,892,543,149       20    146.7      151
+S_klauberi_TG2760_F_genome_R1.fastq.gz    FASTQ   DNA   394,346,685  56,975,158,846       20    144.5      151
+S_klauberi_TG2760_F_genome_R2.fastq.gz    FASTQ   DNA   394,346,685  56,997,950,733       20    144.5      151
+S_macrolepis_TG2721_M_genome_R1.fastq.gz  FASTQ   DNA   333,531,774  48,628,300,841       20    145.8      151
+S_macrolepis_TG2721_M_genome_R2.fastq.gz  FASTQ   DNA   333,531,774  48,636,938,577       20    145.8      151
+S_nicholsi_TG1951_M_genome_R1.fastq.gz    FASTQ   DNA   142,898,781  18,810,228,620       20    131.6      150
+S_nicholsi_TG1951_M_genome_R2.fastq.gz    FASTQ   DNA   142,898,781  18,818,609,004       20    131.7      150
+S_nicholsi_TG2115_F_genome_R1.fastq.gz    FASTQ   DNA   174,937,565  25,970,496,985       20    148.5      150
+S_nicholsi_TG2115_F_genome_R2.fastq.gz    FASTQ   DNA   174,937,565  25,985,638,471       20    148.5      150
+S_notatus_TG3846_M_genome_R1.fastq.gz     FASTQ   DNA   191,931,234  24,513,131,075       20    127.7      150
+S_notatus_TG3846_M_genome_R2.fastq.gz     FASTQ   DNA   191,931,234  24,531,331,150       20    127.8      150
+S_notatus_TG3847_F_genome_R1.fastq.gz     FASTQ   DNA   202,515,706  26,894,698,094       20    132.8      150
+S_notatus_TG3847_F_genome_R2.fastq.gz     FASTQ   DNA   202,515,706  26,907,538,480       20    132.9      150
+S_townsendi_TG3544_M_genome_R1.fastq.gz   FASTQ   DNA   183,343,170  26,943,724,690       20      147      151
+S_townsendi_TG3544_M_genome_R2.fastq.gz   FASTQ   DNA   183,343,170  26,708,952,003       20    145.7      151
+S_townsendi_TG3828_F_genome_R1.fastq.gz   FASTQ   DNA   293,679,054  43,916,521,429       20    149.5      151
+S_townsendi_TG3828_F_genome_R2.fastq.gz   FASTQ   DNA   293,679,054  43,064,714,777       20    146.6      151
+
+
+#map reads to genome using minimap2
+bash minimap2_mapping.sh S_townsendi_TG3544_v0.4.3D-DNA_dedupe.fasta
+
+#calculate read depth using mosdepth
+bash read_cov.sh
+
+#add read groups to bam files using picard
+bash read_groups.sh
+
+#PIXY
+#makes allsites vcf fiel using freebayes
+ls *.bam > bams.txt
+freebayes-parallel <(fasta_generate_regions.py ../MPM_Stown_v2.0.fasta.fai 10000) 24 -f ../MPM_Stown_v2.0.fasta -g 200 --report-monomorphic --gvcf -L bams.txt | bgzip -c > Sphaerodactylus_freebayes_all-sites.vcf.gz
+
+vcftools --gzvcf Sphaerodactylus_freebayes_all-sites.vcf.gz --remove-indels --recode --stdout | bgzip -c > Sphaerodactylus_freebayes_all-sites.recode.vcf.gz
+tabix Sphaerodactylus_freebayes_all-sites.recode.vcf.gz
+
+#calc stats using pixy
+pixy --stats pi fst dxy \
+--vcf Sphaerodactylus_freebayes_all-sites.recode.vcf.gz \
+--populations Sphaeros.txt \
+--window_size 500000 --n_cores 36 \
+--output_prefix July_2021 --silent;
+
+
+
+
+
+#RNAseq data
+file                                      format  type     num_seqs         sum_len  min_len  avg_len  max_len
+S_inigoi_TG2751_M_R1.fastq.gz             FASTQ   DNA    21,608,423   2,674,063,123       20    123.8      126
+S_inigoi_TG2751_M_R2.fastq.gz             FASTQ   DNA    21,608,423   2,671,601,559       20    123.6      126
+S_inigoi_TG2752_M_R1.fastq.gz             FASTQ   DNA    19,098,227   2,363,137,725       20    123.7      126
+S_inigoi_TG2752_M_R2.fastq.gz             FASTQ   DNA    19,098,227   2,363,464,846       20    123.8      126
+S_inigoi_TG2754_F_R1.fastq.gz             FASTQ   DNA    13,759,622   1,696,736,567       20    123.3      126
+S_inigoi_TG2754_F_R2.fastq.gz             FASTQ   DNA    13,759,622   1,698,606,683       20    123.4      126
+S_inigoi_TG2755_F_R1.fastq.gz             FASTQ   DNA    11,000,706   1,336,263,030       20    121.5      126
+S_inigoi_TG2755_F_R2.fastq.gz             FASTQ   DNA    11,000,706   1,353,389,132       20      123      126
+S_macrolepis_TG2743_M_R1.fastq.gz         FASTQ   DNA     7,382,857     907,325,119       20    122.9      126
+S_macrolepis_TG2743_M_R2.fastq.gz         FASTQ   DNA     7,382,857     911,233,073       20    123.4      126
+S_macrolepis_TG2745_F_R1.fastq.gz         FASTQ   DNA    15,979,548   1,967,832,060       20    123.1      126
+S_macrolepis_TG2745_F_R2.fastq.gz         FASTQ   DNA    15,979,548   1,972,872,427       20    123.5      126
+S_macrolepis_TG2746_F_R1.fastq.gz         FASTQ   DNA    14,502,654   1,782,437,728       20    122.9      126
+S_macrolepis_TG2746_F_R2.fastq.gz         FASTQ   DNA    14,502,654   1,789,326,336       20    123.4      126
+S_macrolepis_TG2748_M_R1.fastq.gz         FASTQ   DNA    23,126,740   2,839,858,567       20    122.8      126
+S_macrolepis_TG2748_M_R2.fastq.gz         FASTQ   DNA    23,126,740   2,847,509,181       20    123.1      126
+S_townsendi_TG3467_M_RNA_R1.fastq.gz      FASTQ   DNA    25,000,000   3,524,517,578       20      141      151
+S_townsendi_TG3467_M_RNA_R2.fastq.gz      FASTQ   DNA    25,000,000   3,496,233,516       20    139.8      151
+
+#S. inigoi RNA
+freebayes-parallel <(fasta_generate_regions.py ../MPM_Stown_v2.0.fasta.fai 10000) 12 -f ../MPM_Stown_v2.0.fasta -g 200 -L bams.txt | bgzip -c > S_macrolepis_RNA.vcf.gz
+
+#S. macrolepis RNA
+freebayes-parallel <(fasta_generate_regions.py ../MPM_Stown_v2.0.fasta.fai 10000) 12 -f ../MPM_Stown_v2.0.fasta -g 200 -L bams.txt | bgzip -c > S_macrolepis_RNA.vcf.gz
+
+#S. townsendi RNA
+freebayes-parallel <(fasta_generate_regions.py ../MPM_Stown_v2.0.fasta.fai 10000) 12 -f ../MPM_Stown_v2.0.fasta -g 200 S_townsendi_TG3467_M_RNA.bam | bgzip -c > S_townsendi_RNA.vcf.gz
+
+#calc stats using vcftools
+
+...
+
+
+
+
+
+
+#RADseq data
+#process radtags in stacks
+#bash remove_PCR_dups.sh
+
+file                            	format  type    num_seqs        sum_len  min_len  avg_len  max_len
+S_inigoi_TG1929_F_R1.fastq.gz   	FASTQ   DNA    1,871,571    164,698,248       88       88       88
+S_inigoi_TG1929_F_R2.fastq.gz   	FASTQ   DNA    1,871,571    164,698,248       88       88       88
+S_inigoi_TG1950_M_R1.fastq.gz   	FASTQ   DNA    1,099,244     96,733,472       88       88       88
+S_inigoi_TG1950_M_R2.fastq.gz   	FASTQ   DNA    1,099,244     96,733,472       88       88       88
+S_inigoi_TG1971_M_R1.fastq.gz   	FASTQ   DNA    1,479,753    130,218,264       88       88       88
+S_inigoi_TG1971_M_R2.fastq.gz   	FASTQ   DNA    1,479,753    130,218,264       88       88       88
+S_inigoi_TG1979_F_R1.fastq.gz   	FASTQ   DNA    2,125,294    187,025,872       88       88       88
+S_inigoi_TG1979_F_R2.fastq.gz   	FASTQ   DNA    2,125,294    187,025,872       88       88       88
+S_inigoi_TG1980_F_R1.fastq.gz   	FASTQ   DNA      743,979     65,470,152       88       88       88
+S_inigoi_TG1980_F_R2.fastq.gz   	FASTQ   DNA      743,979     65,470,152       88       88       88
+S_inigoi_TG1981_F_R1.fastq.gz   	FASTQ   DNA    1,337,146    117,668,848       88       88       88
+S_inigoi_TG1981_F_R2.fastq.gz   	FASTQ   DNA    1,337,146    117,668,848       88       88       88
+S_inigoi_TG2018_M_R1.fastq.gz   	FASTQ   DNA    2,105,825    185,312,600       88       88       88
+S_inigoi_TG2018_M_R2.fastq.gz   	FASTQ   DNA    2,105,825    185,312,600       88       88       88
+S_inigoi_TG2046_M_R1.fastq.gz   	FASTQ   DNA    1,185,191    104,296,808       88       88       88
+S_inigoi_TG2046_M_R2.fastq.gz   	FASTQ   DNA    1,185,191    104,296,808       88       88       88
+S_inigoi_TG2047_F_R1.fastq.gz   	FASTQ   DNA    1,030,271     90,663,848       88       88       88
+S_inigoi_TG2047_F_R2.fastq.gz   	FASTQ   DNA    1,030,271     90,663,848       88       88       88
+S_inigoi_TG2048_F_R1.fastq.gz   	FASTQ   DNA    1,337,196    117,673,248       88       88       88
+S_inigoi_TG2048_F_R2.fastq.gz   	FASTQ   DNA    1,337,196    117,673,248       88       88       88
+S_inigoi_TG2049_F_R1.fastq.gz   	FASTQ   DNA    1,480,501    130,284,088       88       88       88
+S_inigoi_TG2049_F_R2.fastq.gz   	FASTQ   DNA    1,480,501    130,284,088       88       88       88
+S_inigoi_TG2050_M_R1.fastq.gz   	FASTQ   DNA    1,007,169     88,630,872       88       88       88
+S_inigoi_TG2050_M_R2.fastq.gz   	FASTQ   DNA    1,007,169     88,630,872       88       88       88
+S_inigoi_TG2145_M_R1.fastq.gz   	FASTQ   DNA    1,683,901    148,183,288       88       88       88
+S_inigoi_TG2145_M_R2.fastq.gz   	FASTQ   DNA    1,683,901    148,183,288       88       88       88
+S_inigoi_TG2146_F_R1.fastq.gz   	FASTQ   DNA    2,017,659    177,553,992       88       88       88
+S_inigoi_TG2146_F_R2.fastq.gz   	FASTQ   DNA    2,017,659    177,553,992       88       88       88
+S_inigoi_TG2147_M_R1.fastq.gz   	FASTQ   DNA      984,970     86,677,360       88       88       88
+S_inigoi_TG2147_M_R2.fastq.gz   	FASTQ   DNA      984,970     86,677,360       88       88       88
+S_inigoi_TG2148_F_R1.fastq.gz   	FASTQ   DNA    1,647,600    144,988,800       88       88       88
+S_inigoi_TG2148_F_R2.fastq.gz   	FASTQ   DNA    1,647,600    144,988,800       88       88       88
+S_nicholsi_TG1995_M_R1.fastq.gz    	FASTQ   DNA    7,591,243  1,024,817,805      135      135      135
+S_nicholsi_TG1995_M_R2.fastq.gz    	FASTQ   DNA    7,591,243  1,024,817,805      135      135      135
+S_nicholsi_TG2003_M_R1.fastq.gz    	FASTQ   DNA    8,236,987  1,111,993,245      135      135      135
+S_nicholsi_TG2003_M_R2.fastq.gz    	FASTQ   DNA    8,236,987  1,111,993,245      135      135      135
+S_nicholsi_TG2096_M_R1.fastq.gz    	FASTQ   DNA    6,978,141    942,049,035      135      135      135
+S_nicholsi_TG2096_M_R2.fastq.gz    	FASTQ   DNA    6,978,141    942,049,035      135      135      135
+S_nicholsi_TG2100_M_R1.fastq.gz    	FASTQ   DNA    8,983,831  1,212,817,185      135      135      135
+S_nicholsi_TG2100_M_R2.fastq.gz    	FASTQ   DNA    8,983,831  1,212,817,185      135      135      135
+S_nicholsi_TG2102_F_R1.fastq.gz    	FASTQ   DNA    7,318,145    987,949,575      135      135      135
+S_nicholsi_TG2102_F_R2.fastq.gz    	FASTQ   DNA    7,318,145    987,949,575      135      135      135
+S_nicholsi_TG2115_F_R1.fastq.gz    	FASTQ   DNA    6,746,860    910,826,100      135      135      135
+S_nicholsi_TG2115_F_R2.fastq.gz    	FASTQ   DNA    6,746,860    910,826,100      135      135      135
+S_nicholsi_TG2666_F_R1.fastq.gz    	FASTQ   DNA    5,824,911    786,362,985      135      135      135
+S_nicholsi_TG2666_F_R2.fastq.gz    	FASTQ   DNA    5,824,911    786,362,985      135      135      135
+S_nicholsi_TG2672_F_R1.fastq.gz    	FASTQ   DNA    8,562,950  1,155,998,250      135      135      135
+S_nicholsi_TG2672_F_R2.fastq.gz    	FASTQ   DNA    8,562,950  1,155,998,250      135      135      135
+S_nicholsi_TG3212_M_R1.fastq.gz    	FASTQ   DNA    7,494,562  1,011,765,870      135      135      135
+S_nicholsi_TG3212_M_R2.fastq.gz    	FASTQ   DNA    7,494,562  1,011,765,870      135      135      135
+S_nicholsi_TG3213_M_R1.fastq.gz    	FASTQ   DNA    6,219,683    839,657,205      135      135      135
+S_nicholsi_TG3213_M_R2.fastq.gz    	FASTQ   DNA    6,219,683    839,657,205      135      135      135
+S_nicholsi_TG3214_F_R1.fastq.gz    	FASTQ   DNA    7,281,244    982,967,940      135      135      135
+S_nicholsi_TG3214_F_R2.fastq.gz    	FASTQ   DNA    7,281,244    982,967,940      135      135      135
+S_nicholsi_TG3216_F_R1.fastq.gz    	FASTQ   DNA   10,859,956  1,466,094,060      135      135      135
+S_nicholsi_TG3216_F_R2.fastq.gz    	FASTQ   DNA   10,859,956  1,466,094,060      135      135      135
+S_notatus_TG3777_M_R1.fastq.gz  	FASTQ   DNA    2,427,470    327,708,450      135      135      135
+S_notatus_TG3777_M_R2.fastq.gz  	FASTQ   DNA    2,427,470    327,708,450      135      135      135
+S_notatus_TG3778_M_R1.fastq.gz  	FASTQ   DNA    2,566,108    346,424,580      135      135      135
+S_notatus_TG3778_M_R2.fastq.gz  	FASTQ   DNA    2,566,108    346,424,580      135      135      135
+S_notatus_TG3779_F_R1.fastq.gz  	FASTQ   DNA    2,620,037    353,704,995      135      135      135
+S_notatus_TG3779_F_R2.fastq.gz  	FASTQ   DNA    2,620,037    353,704,995      135      135      135
+S_notatus_TG3780_F_R1.fastq.gz  	FASTQ   DNA    9,158,936  1,236,456,360      135      135      135
+S_notatus_TG3780_F_R2.fastq.gz  	FASTQ   DNA    9,158,936  1,236,456,360      135      135      135
+S_notatus_TG3781_F_R1.fastq.gz  	FASTQ   DNA    8,827,259  1,191,679,965      135      135      135
+S_notatus_TG3781_F_R2.fastq.gz  	FASTQ   DNA    8,827,259  1,191,679,965      135      135      135
+S_notatus_TG3815_M_R1.fastq.gz  	FASTQ   DNA    5,594,838    755,303,130      135      135      135
+S_notatus_TG3815_M_R2.fastq.gz  	FASTQ   DNA    5,594,838    755,303,130      135      135      135
+S_notatus_TG3816_F_R1.fastq.gz  	FASTQ   DNA    3,247,921    438,469,335      135      135      135
+S_notatus_TG3816_F_R2.fastq.gz  	FASTQ   DNA    3,247,921    438,469,335      135      135      135
+S_notatus_TG3817_F_R1.fastq.gz  	FASTQ   DNA    3,914,930    528,515,550      135      135      135
+S_notatus_TG3817_F_R2.fastq.gz  	FASTQ   DNA    3,914,930    528,515,550      135      135      135
+S_notatus_TG3818_M_R1.fastq.gz  	FASTQ   DNA    6,220,257    839,734,695      135      135      135
+S_notatus_TG3818_M_R2.fastq.gz  	FASTQ   DNA    6,220,257    839,734,695      135      135      135
+S_notatus_TG3819_F_R1.fastq.gz  	FASTQ   DNA    7,826,976  1,056,641,760      135      135      135
+S_notatus_TG3819_F_R2.fastq.gz  	FASTQ   DNA    7,826,976  1,056,641,760      135      135      135
+S_notatus_TG3820_M_R1.fastq.gz  	FASTQ   DNA    8,464,600  1,142,721,000      135      135      135
+S_notatus_TG3820_M_R2.fastq.gz  	FASTQ   DNA    8,464,600  1,142,721,000      135      135      135
+S_notatus_TG3821_M_R1.fastq.gz  	FASTQ   DNA    7,989,841  1,078,628,535      135      135      135
+S_notatus_TG3821_M_R2.fastq.gz  	FASTQ   DNA    7,989,841  1,078,628,535      135      135      135
+S_notatus_TG4158_M_R1.fastq.gz  	FASTQ   DNA    4,644,003    626,940,405      135      135      135
+S_notatus_TG4158_M_R2.fastq.gz  	FASTQ   DNA    4,644,003    626,940,405      135      135      135
+S_notatus_TG4159_F_R1.fastq.gz  	FASTQ   DNA    1,080,890    145,920,150      135      135      135
+S_notatus_TG4159_F_R2.fastq.gz  	FASTQ   DNA    1,080,890    145,920,150      135      135      135
+S_notatus_TG4160_M_R1.fastq.gz  	FASTQ   DNA    1,818,157    245,451,195      135      135      135
+S_notatus_TG4160_M_R2.fastq.gz  	FASTQ   DNA    1,818,157    245,451,195      135      135      135
+S_townsendi_TG2020_M_R1.fastq.gz   	FASTQ   DNA    6,709,620    905,798,700      135      135      135
+S_townsendi_TG2020_M_R2.fastq.gz   	FASTQ   DNA    6,709,620    905,798,700      135      135      135
+S_townsendi_TG2021_F_R1.fastq.gz   	FASTQ   DNA    8,229,133  1,110,932,955      135      135      135
+S_townsendi_TG2021_F_R2.fastq.gz   	FASTQ   DNA    8,229,133  1,110,932,955      135      135      135
+S_townsendi_TG2023_F_R1.fastq.gz   	FASTQ   DNA    7,655,874  1,033,542,990      135      135      135
+S_townsendi_TG2023_F_R2.fastq.gz   	FASTQ   DNA    7,655,874  1,033,542,990      135      135      135
+S_townsendi_TG2024_M_R1.fastq.gz   	FASTQ   DNA    8,640,806  1,166,508,810      135      135      135
+S_townsendi_TG2024_M_R2.fastq.gz   	FASTQ   DNA    8,640,806  1,166,508,810      135      135      135
+S_townsendi_TG2025_M_R1.fastq.gz   	FASTQ   DNA    6,573,786    887,461,110      135      135      135
+S_townsendi_TG2025_M_R2.fastq.gz   	FASTQ   DNA    6,573,786    887,461,110      135      135      135
+S_townsendi_TG2026_M_R1.fastq.gz   	FASTQ   DNA    9,418,585  1,271,508,975      135      135      135
+S_townsendi_TG2026_M_R2.fastq.gz   	FASTQ   DNA    9,418,585  1,271,508,975      135      135      135
+S_townsendi_TG2028_M_R1.fastq.gz   	FASTQ   DNA    8,121,189  1,096,360,515      135      135      135
+S_townsendi_TG2028_M_R2.fastq.gz   	FASTQ   DNA    8,121,189  1,096,360,515      135      135      135
+S_townsendi_TG2059_F_R1.fastq.gz   	FASTQ   DNA    6,624,611    894,322,485      135      135      135
+S_townsendi_TG2059_F_R2.fastq.gz   	FASTQ   DNA    6,624,611    894,322,485      135      135      135
+S_townsendi_TG3101_F_R1.fastq.gz   	FASTQ   DNA    7,386,918    997,233,930      135      135      135
+S_townsendi_TG3101_F_R2.fastq.gz   	FASTQ   DNA    7,386,918    997,233,930      135      135      135
+S_townsendi_TG3108_M_R1.fastq.gz   	FASTQ   DNA    7,404,446    999,600,210      135      135      135
+S_townsendi_TG3108_M_R2.fastq.gz   	FASTQ   DNA    7,404,446    999,600,210      135      135      135
+S_townsendi_TG3110_F_R1.fastq.gz   	FASTQ   DNA    7,141,897    964,156,095      135      135      135
+S_townsendi_TG3110_F_R2.fastq.gz   	FASTQ   DNA    7,141,897    964,156,095      135      135      135
+S_townsendi_TG3133_F_R1.fastq.gz   	FASTQ   DNA    7,912,646  1,068,207,210      135      135      135
+S_townsendi_TG3133_F_R2.fastq.gz   	FASTQ   DNA    7,912,646  1,068,207,210      135      135      135
+S_townsendi_TG3869_M_R1.fastq.gz   	FASTQ   DNA   14,863,144  2,006,524,440      135      135      135
+S_townsendi_TG3869_M_R2.fastq.gz   	FASTQ   DNA   14,863,144  2,006,524,440      135      135      135
+S_townsendi_TG3870_F_R1.fastq.gz   	FASTQ   DNA   16,197,176  2,186,618,760      135      135      135
+S_townsendi_TG3870_F_R2.fastq.gz   	FASTQ   DNA   16,197,176  2,186,618,760      135      135      135
+
+#map reads to genome using minimap2
+bash minimap2_mapping.sh S_townsendi_TG3544_v0.4.3D-DNA_dedupe.fasta
+
+ref_map.pl -T 24 --samples ./ --popmap ../inigoi_popmap.tsv -o ./ --time-components
+ref_map.pl -T 24 --samples ./ --popmap ../nicholsi_popmap.tsv -o ./ --time-components
+ref_map.pl -T 24 --samples ./ --popmap ../notatus_popmap.tsv -o ./ --time-components
+ref_map.pl -T 24 --samples ./ --popmap ../townsendi_popmap.tsv -o ./ --time-components
+
+#stacks output vcf into vcftools calculate Fst
+vcftools --vcf S_inigoi_RADseq.vcf --weir-fst-pop S_inigoi_females.txt --weir-fst-pop S_inigoi_males.txt --fst-window-size 500000 --fst-window-step 500000 --out S_inigoi_RADseq_fst;
+vcftools --vcf S_nicholsi_RADseq.vcf --weir-fst-pop S_nicholsi_females.txt --weir-fst-pop S_nicholsi_males.txt --fst-window-size 500000 --fst-window-step 500000 --out S_nicholsi_RADseq_fst;
+vcftools --vcf S_notatus_RADseq.vcf --weir-fst-pop S_notatus_females.txt --weir-fst-pop S_notatus_males.txt --fst-window-size 500000 --fst-window-step 500000 --out S_notatus_RADseq_fst;
+vcftools --vcf S_townsendi_RADseq.vcf --weir-fst-pop S_townsendi_females.txt --weir-fst-pop S_townsendi_males.txt --fst-window-size 500000 --fst-window-step 500000 --out S_townsendi_RADseq_fst;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
